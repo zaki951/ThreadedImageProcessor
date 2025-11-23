@@ -42,5 +42,5 @@ These numbers are only indicative and will vary depending on the machine and the
 
 ## Usage
 
-``./build.sh && run.sh``
+``./build.sh && ./run.sh``
 
