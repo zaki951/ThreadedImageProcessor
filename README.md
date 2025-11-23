@@ -34,8 +34,8 @@ These numbers are only indicative and will vary depending on the machine and the
 
 | Mode          | Time   
 |---------------|--------
-| Single thread | 2,5 s   
-| 8 threads     | 10 s
+| 8 threads     | 2,5 s   
+| 1 thread      | 10 s
 
 
 ---
