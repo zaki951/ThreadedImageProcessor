@@ -3,70 +3,76 @@
 #include <functional>
 #include <chrono>
 #include <mutex>
-#include <filesystem>
 #include <algorithm>
-#include <boost/gil.hpp>
-#include <boost/gil/extension/io/jpeg.hpp>
-#include <boost/gil/extension/io/png.hpp>
 #include "clock.h"
 #include "workers.h"
+#include <future>
 
 std::mutex m;
+constexpr int IT_N = 4000;
 
-namespace fs = std::filesystem;
-namespace gil = boost::gil;
 
-std::vector<std::string> get_files(std::string_view input_folder) {
-	std::vector<std::string> v;
-	for (const auto& entry : fs::directory_iterator(input_folder)) {
-        if (entry.is_regular_file()) {
-            v.push_back(entry.path());
-		}
-	}	
-	return v;
+
+bool is_prime(uint64_t n) {
+    if (n < 2) return false;
+    for (uint64_t i = 2; i*i <= n; ++i)
+        if (n % i == 0) return false;
+    return true;
+}
+
+uint64_t count_primes(uint64_t start, uint64_t end) {
+    uint64_t count = 0;
+    for (uint64_t i = start; i < end; ++i)
+        if (is_prime(i)) ++count;
+    return count;
+}
+
+void task_prime() {
+	count_primes(0, 10000);
 }
 
 
-void process_image(const std::string& input, std::string target_folder) {
-    fs::path input_path(input);
-    fs::path output_path = fs::path(target_folder) / input_path.filename();
-    gil::rgb8_image_t img;
-    gil::read_image(input, img, gil::jpeg_tag{});  
 
-    // conversion en grayscale
-    gil::gray8_image_t gray(img.dimensions());
-    gil::copy_and_convert_pixels(view(img), view(gray));
-
-    gil::write_view(output_path.string(), view(gray), gil::png_tag{}); 
-}
-
-
-void producer(Workers& w, std::string_view input_folder, std::string_view target_folder) {
-	// This thread will read all images from a given folder
-	for (auto& file : get_files(input_folder)) {
-		std::cout << file << std::endl;
-		auto t= [file, target_folder](){
-			process_image(file, std::string(target_folder));
-		};
-		w.add_task(std::move(t));
+void producer(Workers& w) {
+	for (int i = 0; i < IT_N; ++i) {
+		w.add_task(task_prime);
 	}
 }
 
-void single_thread(std::string_view input_folder, std::string_view target_folder) {
-	// This thread will read all images from a given folder
-	for (auto& file : get_files(input_folder)) {
-		std::cout << file << std::endl;
-		process_image(file, std::string(target_folder));
+void single_thread() {
+	for (int i = 0; i < IT_N; ++i) {
+		task_prime();
+	}
+}
+
+
+void async_producer() {
+	std::vector<std::future<void>> futures;
+	
+	for (int i = 0; i < IT_N; ++i) {
+		auto f = std::async(std::launch::async, task_prime);
+		futures.push_back(std::move(f));
+	}
+	for (auto& f : futures) {
+		f.wait();
+	}
+}
+
+void bad_thread_producer() {
+	std::vector<std::thread> threads;
+
+	for (int i = 0; i < IT_N; ++i) {
+		auto f = std::thread(task_prime);
+		threads.push_back(std::move(f));
+	}
+	for (auto& t : threads) {
+		t.join();
 	}
 }
 
 
 
 int main(int argc, char** argv) {
-	if (argc != 3) {
-		std::cerr << "Usage: ./img_process input_folder output_folder" << std::endl;
-		exit(1);
-	}
 	{
 		Clock ck;
 		const uint32_t N_THREADS = std::max(2u, std::thread::hardware_concurrency());
@@ -74,13 +80,23 @@ int main(int argc, char** argv) {
 
 		Workers w {N_THREADS};
 	
-		producer(w, argv[1], argv[2]);
+		producer(w);
 		std::cout <<"Multithreading => ";
 	}
 	{
 		Clock ck;
-		single_thread(argv[1], argv[2]);
+		single_thread();
 		std::cout << "Single thread => ";
+	}
+	{
+		Clock ck;
+		async_producer();
+		std::cout << "async => ";
+	}
+	{
+		Clock ck;
+		bad_thread_producer();
+		std::cout << "bad thread => ";
 	}
 	return 0;
 }

@@ -11,6 +11,7 @@
 class Workers {
 public:
 	using FUNC = std::function<void()>;
+
 	Workers(uint32_t n)  {
 		_workers.reserve(n);
 		for (uint32_t i = 0; i < n; ++i) {
